@@ -1,0 +1,12 @@
+[
+  {
+    "id": "ord_ad9d9896",
+    "user_id": "user_da7e8f55c72e",
+    "amount": 30.0,
+    "currency": "CNY",
+    "status": "pending",
+    "payment_method": "alipay",
+    "description": "充值 30.0 元",
+    "created_at": 1780490262735
+  }
+]

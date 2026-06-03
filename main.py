@@ -31,7 +31,7 @@ from io import BytesIO
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -222,6 +222,84 @@ CONVERSATION_LOCK = Lock()
 CANVAS_LOCK = Lock()
 LOAD_LOCK = Lock()
 RUNNINGHUB_WORKFLOW_LOCK = Lock()
+
+# --- 用户系统 ---
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
+ORDERS_FILE = os.path.join(DATA_DIR, "orders.json")
+USAGE_FILE = os.path.join(DATA_DIR, "usage.json")
+API_PRICING_FILE = os.path.join(DATA_DIR, "api_provider_pricing.json")
+USERS_LOCK = Lock()
+SESSIONS_LOCK = Lock()
+ORDERS_LOCK = Lock()
+USAGE_LOCK = Lock()
+PRICING_LOCK = Lock()
+SESSION_EXPIRE_SECONDS = 7 * 24 * 3600
+
+
+def _load_json(path: str, default: Any = None) -> Any:
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return default if default is not None else {}
+
+
+def _save_json(path: str, data: Any) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
+    return salt.hex() + ":" + key.hex()
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt_hex, key_hex = stored.split(":", 1)
+        salt = bytes.fromhex(salt_hex)
+        key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
+        return hmac.compare_digest(key.hex(), key_hex)
+    except Exception:
+        return False
+
+
+def _get_session_user(request: Request) -> Optional[Dict[str, Any]]:
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        return None
+    with SESSIONS_LOCK:
+        sessions = _load_json(SESSIONS_FILE, {})
+        session = sessions.get(session_id)
+        if not session:
+            return None
+        now = time.time()
+        if session.get("expires_at", 0) < now:
+            del sessions[session_id]
+            _save_json(SESSIONS_FILE, sessions)
+            return None
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        user = users.get(session["user_id"])
+        if not user or user.get("status") != "active":
+            return None
+        return {k: v for k, v in user.items() if k != "password_hash"}
+
+
+def _require_auth(request: Request) -> Dict[str, Any]:
+    user = _get_session_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def _require_admin(request: Request) -> Dict[str, Any]:
+    user = _require_auth(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
 NEXT_TASK_ID = 1
 UPDATE_LOCK = Lock()
 JIMENG_LOGIN_SESSION = {
@@ -6302,6 +6380,477 @@ def upstream_message_from_record(item):
                 content.append({"type": "image_url", "image_url": {"url": url}})
         return {"role": role, "content": content}
     return {"role": role, "content": item.get("content", "")}
+
+# --- 用户系统 API ---
+
+AUTH_WHITELIST = {
+    "/",
+    "/static/login.html",
+    "/static/pricing.html",
+    "/api/auth/login",
+    "/api/auth/register",
+}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path.split("?")[0]
+    # Whitelist: auth endpoints, static assets, login page
+    if path in AUTH_WHITELIST:
+        return await call_next(request)
+    if path.startswith("/static/css/") or path.startswith("/static/js/"):
+        return await call_next(request)
+    if path.startswith("/static/vendor/") or path.startswith("/static/images/"):
+        return await call_next(request)
+    if path.startswith("/output/") or path.startswith("/assets/"):
+        return await call_next(request)
+    # API endpoints need auth (except whitelisted)
+    if path.startswith("/api/auth/") or path.startswith("/api/public/"):
+        return await call_next(request)
+    # For the main index page, check session
+    if path == "/static/index.html":
+        user = _get_session_user(request)
+        if not user:
+            return RedirectResponse(url="/static/login.html", status_code=302)
+        return await call_next(request)
+    # API endpoints: let the endpoint handler check auth
+    if path.startswith("/api/"):
+        return await call_next(request)
+    # Other static HTML pages (admin, dashboard, etc.)
+    if path.endswith(".html"):
+        user = _get_session_user(request)
+        if not user:
+            return RedirectResponse(url="/static/login.html", status_code=302)
+        return await call_next(request)
+    return await call_next(request)
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    login: str
+    password: str
+
+
+class TopupRequest(BaseModel):
+    amount: float
+    payment_method: str = "alipay"
+
+
+class BalanceAdjustRequest(BaseModel):
+    amount: float
+    action: str = "add"
+
+
+class UserStatusRequest(BaseModel):
+    status: str
+
+
+class PricingUpdateRequest(BaseModel):
+    per_call: float = 0.0
+    per_1k_tokens_in: float = 0.0
+    per_1k_tokens_out: float = 0.0
+
+
+@app.post("/api/auth/register")
+async def auth_register(req: RegisterRequest):
+    if len(req.username) < 2 or len(req.username) > 32:
+        raise HTTPException(status_code=400, detail="Username must be 2-32 characters")
+    if "@" not in req.email or len(req.email) > 128:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        for u in users.values():
+            if u["username"] == req.username:
+                raise HTTPException(status_code=400, detail="Username already exists")
+            if u["email"] == req.email:
+                raise HTTPException(status_code=400, detail="Email already registered")
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        users[user_id] = {
+            "id": user_id,
+            "username": req.username,
+            "email": req.email,
+            "password_hash": _hash_password(req.password),
+            "role": "admin" if len(users) == 0 else "user",
+            "balance": 100.0 if len(users) == 0 else 0.0,
+            "status": "active",
+            "created_at": int(time.time() * 1000),
+            "last_login": None,
+        }
+        _save_json(USERS_FILE, users)
+        user = {k: v for k, v in users[user_id].items() if k != "password_hash"}
+    return {"ok": True, "user": user}
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: LoginRequest, request: Request):
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        user = None
+        for u in users.values():
+            if u["username"] == req.login or u["email"] == req.login:
+                user = u
+                break
+    if not user or not _verify_password(req.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("status") != "active":
+        raise HTTPException(status_code=403, detail="Account disabled")
+    session_id = uuid.uuid4().hex
+    now = time.time()
+    with SESSIONS_LOCK:
+        sessions = _load_json(SESSIONS_FILE, {})
+        sessions[session_id] = {
+            "user_id": user["id"],
+            "created_at": int(now * 1000),
+            "expires_at": int((now + SESSION_EXPIRE_SECONDS) * 1000),
+            "ip": request.client.host if request.client else "unknown",
+        }
+        _save_json(SESSIONS_FILE, sessions)
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        if user["id"] in users:
+            users[user["id"]]["last_login"] = int(now * 1000)
+            _save_json(USERS_FILE, users)
+    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
+    resp = JSONResponse({"ok": True, "user": safe_user})
+    resp.set_cookie("session_id", session_id, httponly=True, samesite="lax", max_age=SESSION_EXPIRE_SECONDS, path="/")
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    session_id = request.cookies.get("session_id")
+    if session_id:
+        with SESSIONS_LOCK:
+            sessions = _load_json(SESSIONS_FILE, {})
+            sessions.pop(session_id, None)
+            _save_json(SESSIONS_FILE, sessions)
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("session_id", path="/")
+    return resp
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    user = _require_auth(request)
+    return {"user": user}
+
+
+# --- 用户面板 API ---
+
+
+@app.get("/api/user/balance")
+async def user_balance(request: Request):
+    user = _require_auth(request)
+    return {"balance": user.get("balance", 0.0), "currency": "CNY"}
+
+
+@app.get("/api/user/usage")
+async def user_usage(request: Request, period: str = "7d", page: int = 1, limit: int = 20):
+    _require_auth(request)
+    # Mock usage data
+    mock_items = []
+    models = ["gpt-4", "gpt-3.5-turbo", "claude-3-sonnet", "dall-e-3", "flux-pro"]
+    api_types = ["chat", "chat", "chat", "image", "image"]
+    now = int(time.time() * 1000)
+    for i in range(50):
+        idx = i % len(models)
+        mock_items.append({
+            "id": f"usage_{i:04d}",
+            "date": now - i * 3600000 * 6,
+            "api_type": api_types[idx],
+            "model": models[idx],
+            "tokens_in": 80 + (i * 7) % 200,
+            "tokens_out": 40 + (i * 3) % 150,
+            "cost": round(0.005 + (i * 0.003) % 0.1, 4),
+        })
+    start = (page - 1) * limit
+    return {"total": len(mock_items), "items": mock_items[start:start + limit]}
+
+
+@app.get("/api/user/orders")
+async def user_orders(request: Request, page: int = 1, limit: int = 20):
+    _require_auth(request)
+    now = int(time.time() * 1000)
+    mock_orders = [
+        {"id": "ord_001", "amount": 50.0, "currency": "CNY", "status": "completed", "created_at": now - 86400000 * 3, "description": "充值 50 元"},
+        {"id": "ord_002", "amount": 100.0, "currency": "CNY", "status": "completed", "created_at": now - 86400000 * 10, "description": "充值 100 元"},
+        {"id": "ord_003", "amount": 30.0, "currency": "CNY", "status": "pending", "created_at": now - 3600000, "description": "充值 30 元"},
+    ]
+    start = (page - 1) * limit
+    return {"total": len(mock_orders), "items": mock_orders[start:start + limit]}
+
+
+@app.post("/api/user/topup")
+async def user_topup(req: TopupRequest, request: Request):
+    user = _require_auth(request)
+    if req.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    order_id = f"ord_{uuid.uuid4().hex[:8]}"
+    with ORDERS_LOCK:
+        orders = _load_json(ORDERS_FILE, [])
+        orders.append({
+            "id": order_id,
+            "user_id": user["id"],
+            "amount": req.amount,
+            "currency": "CNY",
+            "status": "pending",
+            "payment_method": req.payment_method,
+            "description": f"充值 {req.amount} 元",
+            "created_at": int(time.time() * 1000),
+        })
+        _save_json(ORDERS_FILE, orders)
+    return {"order_id": order_id, "payment_url": "#", "status": "pending"}
+
+
+# --- 管理后台 API ---
+
+
+@app.get("/api/admin/users")
+async def admin_users(request: Request, page: int = 1, limit: int = 20, search: str = ""):
+    _require_admin(request)
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+    items = []
+    for u in users.values():
+        safe = {k: v for k, v in u.items() if k != "password_hash"}
+        if search and search.lower() not in safe.get("username", "").lower() and search.lower() not in safe.get("email", "").lower():
+            continue
+        items.append(safe)
+    start = (page - 1) * limit
+    return {"total": len(items), "items": items[start:start + limit]}
+
+
+@app.put("/api/admin/users/{user_id}/status")
+async def admin_user_status(user_id: str, req: UserStatusRequest, request: Request):
+    _require_admin(request)
+    if req.status not in ("active", "disabled"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        if user_id not in users:
+            raise HTTPException(status_code=404, detail="User not found")
+        users[user_id]["status"] = req.status
+        _save_json(USERS_FILE, users)
+    return {"ok": True}
+
+
+@app.put("/api/admin/users/{user_id}/balance")
+async def admin_user_balance(user_id: str, req: BalanceAdjustRequest, request: Request):
+    _require_admin(request)
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        if user_id not in users:
+            raise HTTPException(status_code=404, detail="User not found")
+        if req.action == "add":
+            users[user_id]["balance"] = round(users[user_id].get("balance", 0) + req.amount, 2)
+        elif req.action == "set":
+            users[user_id]["balance"] = round(req.amount, 2)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid action")
+        new_balance = users[user_id]["balance"]
+        _save_json(USERS_FILE, users)
+    return {"ok": True, "new_balance": new_balance}
+
+
+@app.get("/api/admin/api-providers")
+async def admin_api_providers(request: Request):
+    _require_admin(request)
+    with PRICING_LOCK:
+        pricing = _load_json(API_PRICING_FILE, {})
+    if os.path.exists(API_PROVIDERS_FILE):
+        with open(API_PROVIDERS_FILE, "r", encoding="utf-8") as f:
+            providers = json.load(f)
+    else:
+        providers = []
+    result = []
+    for p in providers:
+        pid = p.get("id", "")
+        ppricing = pricing.get(pid, {"per_call": 0.0, "per_1k_tokens_in": 0.0, "per_1k_tokens_out": 0.0})
+        result.append({
+            "id": pid,
+            "name": p.get("name", ""),
+            "base_url": p.get("baseUrl", ""),
+            "enabled": p.get("enabled", True),
+            "pricing": ppricing,
+        })
+    return {"providers": result}
+
+
+@app.put("/api/admin/api-providers/{provider_id}/pricing")
+async def admin_update_pricing(provider_id: str, req: PricingUpdateRequest, request: Request):
+    _require_admin(request)
+    with PRICING_LOCK:
+        pricing = _load_json(API_PRICING_FILE, {})
+        pricing[provider_id] = {
+            "per_call": req.per_call,
+            "per_1k_tokens_in": req.per_1k_tokens_in,
+            "per_1k_tokens_out": req.per_1k_tokens_out,
+        }
+        _save_json(API_PRICING_FILE, pricing)
+    return {"ok": True}
+
+
+@app.get("/api/admin/orders")
+async def admin_orders(request: Request, page: int = 1, limit: int = 20, status: str = ""):
+    _require_admin(request)
+    with ORDERS_LOCK:
+        orders = _load_json(ORDERS_FILE, [])
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+    if status:
+        orders = [o for o in orders if o.get("status") == status]
+    for o in orders:
+        uid = o.get("user_id", "")
+        u = users.get(uid, {})
+        o["username"] = u.get("username", "unknown")
+    start = (page - 1) * limit
+    return {"total": len(orders), "items": orders[start:start + limit]}
+
+
+@app.post("/api/admin/orders/{order_id}/refund")
+async def admin_refund_order(order_id: str, request: Request):
+    admin = _require_admin(request)
+    with ORDERS_LOCK:
+        orders = _load_json(ORDERS_FILE, [])
+        order = None
+        for o in orders:
+            if o["id"] == order_id:
+                order = o
+                break
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if order["status"] != "completed":
+            raise HTTPException(status_code=400, detail="Only completed orders can be refunded")
+        order["status"] = "refunded"
+        _save_json(ORDERS_FILE, orders)
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        uid = order.get("user_id", "")
+        if uid in users:
+            users[uid]["balance"] = round(users[uid].get("balance", 0) - order.get("amount", 0), 2)
+            _save_json(USERS_FILE, users)
+    return {"ok": True}
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(request: Request):
+    _require_admin(request)
+    now = int(time.time() * 1000)
+    day = 86400000
+    return {
+        "total_users": 1,
+        "active_users_today": 1,
+        "active_users_7d": 1,
+        "total_revenue": 150.0,
+        "revenue_today": 0.0,
+        "revenue_7d": 50.0,
+        "total_api_calls": 1234,
+        "api_calls_today": 56,
+        "total_tokens_in": 500000,
+        "total_tokens_out": 250000,
+        "by_provider": [
+            {"provider_id": "openai", "provider_name": "OpenAI", "calls": 800, "tokens_in": 320000, "tokens_out": 160000, "cost": 45.0, "revenue": 90.0},
+            {"provider_id": "modelscope", "provider_name": "ModelScope", "calls": 434, "tokens_in": 180000, "tokens_out": 90000, "cost": 12.0, "revenue": 60.0},
+        ],
+        "daily_chart": [
+            {"date": now - 6 * day, "calls": 45, "revenue": 8.5},
+            {"date": now - 5 * day, "calls": 52, "revenue": 10.2},
+            {"date": now - 4 * day, "calls": 38, "revenue": 7.1},
+            {"date": now - 3 * day, "calls": 67, "revenue": 15.3},
+            {"date": now - 2 * day, "calls": 71, "revenue": 16.8},
+            {"date": now - day, "calls": 55, "revenue": 12.4},
+            {"date": now, "calls": 56, "revenue": 11.9},
+        ],
+    }
+
+
+# --- API 代理 ---
+
+
+@app.post("/api/proxy/chat/completions")
+async def proxy_chat_completions(request: Request):
+    user = _require_auth(request)
+    body = await request.json()
+    model = body.get("model", "gpt-4")
+    # Mock: deduct a small amount and return canned response
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        uid = user["id"]
+        if uid not in users:
+            raise HTTPException(status_code=401, detail="User not found")
+        if users[uid].get("balance", 0) <= 0:
+            raise HTTPException(status_code=402, detail="Insufficient balance")
+        users[uid]["balance"] = round(users[uid]["balance"] - 0.01, 4)
+        _save_json(USERS_FILE, users)
+    with USAGE_LOCK:
+        usage = _load_json(USAGE_FILE, [])
+        usage.append({
+            "id": f"usage_{uuid.uuid4().hex[:8]}",
+            "user_id": uid,
+            "api_type": "chat",
+            "model": model,
+            "provider_id": "mock",
+            "tokens_in": 100,
+            "tokens_out": 50,
+            "cost": 0.01,
+            "created_at": int(time.time() * 1000),
+        })
+        _save_json(USAGE_FILE, usage)
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        "object": "chat.completion",
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "This is a mock response from the API proxy."},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+    }
+
+
+@app.post("/api/proxy/images/generations")
+async def proxy_image_generations(request: Request):
+    user = _require_auth(request)
+    body = await request.json()
+    model = body.get("model", "dall-e-3")
+    with USERS_LOCK:
+        users = _load_json(USERS_FILE, {})
+        uid = user["id"]
+        if uid not in users:
+            raise HTTPException(status_code=401, detail="User not found")
+        if users[uid].get("balance", 0) <= 0:
+            raise HTTPException(status_code=402, detail="Insufficient balance")
+        users[uid]["balance"] = round(users[uid]["balance"] - 0.05, 4)
+        _save_json(USERS_FILE, users)
+    with USAGE_LOCK:
+        usage = _load_json(USAGE_FILE, [])
+        usage.append({
+            "id": f"usage_{uuid.uuid4().hex[:8]}",
+            "user_id": uid,
+            "api_type": "image",
+            "model": model,
+            "provider_id": "mock",
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "cost": 0.05,
+            "created_at": int(time.time() * 1000),
+        })
+        _save_json(USAGE_FILE, usage)
+    return {
+        "id": f"img-{uuid.uuid4().hex[:8]}",
+        "object": "image",
+        "model": model,
+        "data": [{"url": "https://placehold.co/512x512?text=Mock+Image"}],
+    }
+
 
 # --- 路由接口 ---
 

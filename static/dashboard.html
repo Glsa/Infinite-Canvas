@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/logo.png" type="image/png">
+    <title>控制台</title>
+    <script>
+        (function(){
+            try {
+                var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'light';
+                if(theme === 'dark') {
+                    document.documentElement.classList.add('studio-theme-dark');
+                    document.documentElement.classList.add('theme-dark');
+                }
+            } catch(e) {}
+        })();
+    </script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.03.1"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.06.03.1"></script>
+    <script src="/static/js/theme.js?v=2026.06.03.1"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.03.1">
+    <script src="/static/js/auth.js?v=2026.06.03.1"></script>
+    <style>
+        @import url('/static/vendor/css/fonts.css?v=2026.06.03.1');
+
+        :root {
+            --dash-bg: #fff;
+            --dash-text: #121212;
+            --dash-muted: #999;
+            --dash-card: #fff;
+            --dash-border: #f2f2f2;
+            --dash-line: #f2f2f2;
+            --dash-shadow: rgba(0, 0, 0, 0.04);
+            --dash-shadow-lg: rgba(0, 0, 0, 0.08);
+            --dash-accent: #000;
+            --dash-accent-text: #fff;
+            --dash-green: #10b981;
+            --dash-yellow: #f59e0b;
+            --dash-gray: #94a3b8;
+            --dash-bar-fill: #121212;
+            --dash-bar-bg: #f5f5f5;
+            --dash-overlay: rgba(0, 0, 0, 0.4);
+            --dash-modal-bg: #fff;
+            --dash-hover: #fafafa;
+            --dash-input-bg: #fafafa;
+            --dash-input-border: #e5e7eb;
+        }
+
+        html.studio-theme-dark {
+            --dash-bg: #08090c;
+            --dash-text: #e8e8ea;
+            --dash-muted: #8f9aab;
+            --dash-card: #111216;
+            --dash-border: #25262b;
+            --dash-line: #25262b;
+            --dash-shadow: rgba(0, 0, 0, 0.2);
+            --dash-shadow-lg: rgba(0, 0, 0, 0.32);
+            --dash-accent: #e8e8ea;
+            --dash-accent-text: #08090c;
+            --dash-green: #34d399;
+            --dash-yellow: #fbbf24;
+            --dash-gray: #64748b;
+            --dash-bar-fill: #e8e8ea;
+            --dash-bar-bg: #1a1b20;
+            --dash-overlay: rgba(0, 0, 0, 0.6);
+            --dash-modal-bg: #111216;
+            --dash-hover: #16171b;
+            --dash-input-bg: #0c0d10;
+            --dash-input-border: #32343a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dash-bg);
+            color: var(--dash-text);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .dashboard {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 32px 28px 48px;
+        }
+
+        /* --- Header --- */
+        .dash-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .dash-header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .dash-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--dash-text);
+        }
+
+        .dash-user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dash-email {
+            font-size: 13px;
+            color: var(--dash-muted);
+        }
+
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            height: 22px;
+            padding: 0 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            background: var(--dash-bg);
+            border: 1px solid var(--dash-border);
+            color: var(--dash-muted);
+        }
+
+        /* --- Glass Button --- */
+        .glass-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 40px;
+            padding: 0 22px;
+            border-radius: 999px;
+            background: var(--dash-accent);
+            color: var(--dash-accent-text);
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.15s;
+            white-space: nowrap;
+        }
+
+        .glass-btn:hover {
+            opacity: 0.85;
+        }
+
+        .glass-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* --- Stats Row --- */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .stat-card {
+            background: var(--dash-card);
+            border: 1px solid var(--dash-border);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 4px 16px var(--dash-shadow);
+            transition: box-shadow 0.25s, border-color 0.25s;
+        }
+
+        .stat-card:hover {
+            box-shadow: 0 8px 28px var(--dash-shadow-lg);
+            border-color: var(--dash-line);
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 14px;
+            background: var(--dash-input-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            color: var(--dash-text);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--dash-muted);
+            margin-bottom: 6px;
+            letter-spacing: 0.01em;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--dash-text);
+            line-height: 1.1;
+        }
+
+        .stat-unit {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--dash-muted);
+            margin-left: 4px;
+        }
+
+        /* --- Chart Card --- */
+        .chart-card {
+            background: var(--dash-card);
+            border: 1px solid var(--dash-border);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 28px;
+            box-shadow: 0 4px 16px var(--dash-shadow);
+        }
+
+        .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .chart-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--dash-text);
+        }
+
+        .period-selector {
+            display: flex;
+            background: var(--dash-input-bg);
+            border: 1px solid var(--dash-border);
+            border-radius: 999px;
+            padding: 2px;
+            gap: 2px;
+        }
+
+        .period-btn {
+            height: 28px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: none;
+            background: transparent;
+            color: var(--dash-muted);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .period-btn.active {
+            background: var(--dash-accent);
+            color: var(--dash-accent-text);
+            box-shadow: 0 2px 6px var(--dash-shadow);
+        }
+
+        .period-btn:hover:not(.active) {
+            color: var(--dash-text);
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 160px;
+            padding-top: 8px;
+        }
+
+        .bar-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            height: 100%;
+            justify-content: flex-end;
+        }
+
+        .bar {
+            width: 100%;
+            max-width: 48px;
+            border-radius: 10px 10px 6px 6px;
+            background: var(--dash-bar-fill);
+            transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 4px;
+        }
+
+        .bar-label {
+            font-size: 11px;
+            color: var(--dash-muted);
+            font-weight: 500;
+        }
+
+        .bar-value {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--dash-text);
+            margin-bottom: 2px;
+        }
+
+        /* --- Card Container (tables) --- */
+        .table-card {
+            background: var(--dash-card);
+            border: 1px solid var(--dash-border);
+            border-radius: 24px;
+            padding: 0;
+            margin-bottom: 28px;
+            box-shadow: 0 4px 16px var(--dash-shadow);
+            overflow: hidden;
+        }
+
+        .table-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px 16px;
+        }
+
+        .table-card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--dash-text);
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            padding: 10px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: var(--dash-muted);
+            text-align: left;
+            background: var(--dash-input-bg);
+            border-top: 1px solid var(--dash-border);
+            border-bottom: 1px solid var(--dash-border);
+            white-space: nowrap;
+        }
+
+        tbody td {
+            padding: 14px 16px;
+            font-size: 13px;
+            color: var(--dash-text);
+            border-bottom: 1px solid var(--dash-border);
+            white-space: nowrap;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: var(--dash-hover);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 24px;
+            padding: 0 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-badge.completed {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--dash-green);
+        }
+
+        .status-badge.pending {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--dash-yellow);
+        }
+
+        .status-badge.refunded {
+            background: rgba(148, 163, 184, 0.1);
+            color: var(--dash-gray);
+        }
+
+        /* --- Pagination --- */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 16px 24px 20px;
+        }
+
+        .page-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1px solid var(--dash-border);
+            background: transparent;
+            color: var(--dash-muted);
+            font-size: 12px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .page-btn:hover {
+            background: var(--dash-hover);
+            color: var(--dash-text);
+        }
+
+        .page-btn.active {
+            background: var(--dash-accent);
+            color: var(--dash-accent-text);
+            border-color: var(--dash-accent);
+        }
+
+        .page-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .page-info {
+            font-size: 12px;
+            color: var(--dash-muted);
+            margin: 0 12px;
+        }
+
+        /* --- Modal --- */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--dash-overlay);
+            backdrop-filter: blur(6px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal {
+            background: var(--dash-modal-bg);
+            border: 1px solid var(--dash-border);
+            border-radius: 24px;
+            padding: 32px;
+            width: 400px;
+            max-width: calc(100vw - 40px);
+            box-shadow: 0 24px 64px var(--dash-shadow-lg);
+            animation: slideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dash-text);
+            margin-bottom: 24px;
+        }
+
+        .amount-presets {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .amount-btn {
+            height: 44px;
+            border-radius: 14px;
+            border: 1px solid var(--dash-border);
+            background: transparent;
+            color: var(--dash-text);
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .amount-btn:hover {
+            border-color: var(--dash-accent);
+        }
+
+        .amount-btn.active {
+            background: var(--dash-accent);
+            color: var(--dash-accent-text);
+            border-color: var(--dash-accent);
+        }
+
+        .amount-input-wrap {
+            margin-bottom: 20px;
+        }
+
+        .amount-input {
+            width: 100%;
+            height: 48px;
+            border-radius: 14px;
+            border: 1px solid var(--dash-input-border);
+            background: var(--dash-input-bg);
+            padding: 0 16px;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: inherit;
+            color: var(--dash-text);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .amount-input:focus {
+            border-color: var(--dash-accent);
+        }
+
+        .amount-input::placeholder {
+            color: var(--dash-muted);
+            font-weight: 400;
+        }
+
+        .payment-section-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--dash-muted);
+            margin-bottom: 10px;
+            letter-spacing: 0.04em;
+        }
+
+        .payment-methods {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 28px;
+        }
+
+        .payment-btn {
+            flex: 1;
+            height: 44px;
+            border-radius: 14px;
+            border: 1px solid var(--dash-border);
+            background: transparent;
+            color: var(--dash-text);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .payment-btn:hover {
+            border-color: var(--dash-accent);
+        }
+
+        .payment-btn.active {
+            background: var(--dash-accent);
+            color: var(--dash-accent-text);
+            border-color: var(--dash-accent);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .modal-cancel {
+            flex: 1;
+            height: 44px;
+            border-radius: 14px;
+            border: 1px solid var(--dash-border);
+            background: transparent;
+            color: var(--dash-muted);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .modal-cancel:hover {
+            color: var(--dash-text);
+            border-color: var(--dash-line);
+        }
+
+        .modal-confirm {
+            flex: 2;
+            height: 44px;
+            border-radius: 14px;
+            border: none;
+            background: var(--dash-accent);
+            color: var(--dash-accent-text);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .modal-confirm:hover {
+            opacity: 0.85;
+        }
+
+        .modal-confirm:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* --- Empty / Loading --- */
+        .empty-row td {
+            text-align: center;
+            color: var(--dash-muted);
+            padding: 40px 16px;
+            font-size: 13px;
+        }
+
+        .loading-cell {
+            text-align: center;
+            color: var(--dash-muted);
+            padding: 40px 16px;
+            font-size: 13px;
+        }
+
+        /* --- Toast --- */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--dash-card);
+            border: 1px solid var(--dash-border);
+            border-radius: 16px;
+            padding: 14px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--dash-text);
+            box-shadow: 0 12px 36px var(--dash-shadow-lg);
+            z-index: 200;
+            opacity: 0;
+            transform: translateY(-8px);
+            transition: all 0.3s;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .toast.error {
+            border-color: #fca5a5;
+            color: #dc2626;
+        }
+
+        .toast.success {
+            border-color: #6ee7b7;
+            color: #059669;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(16px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @media (max-width: 700px) {
+            .dashboard {
+                padding: 20px 14px 36px;
+            }
+            .stats-row {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            .dash-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 14px;
+            }
+            .bar-chart {
+                gap: 6px;
+                height: 120px;
+            }
+            .modal {
+                width: 100%;
+                max-width: calc(100vw - 28px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <div class="dash-header">
+            <div class="dash-header-left">
+                <div class="dash-title">控制台</div>
+                <div class="dash-user-info">
+                    <span class="dash-email" id="userEmail">加载中...</span>
+                    <span class="role-badge" id="userRole">-</span>
+                </div>
+            </div>
+            <button class="glass-btn" onclick="openTopupModal()">
+                <i data-lucide="plus" style="width:16px;height:16px;"></i>
+                充值
+            </button>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i data-lucide="wallet" style="width:20px;height:20px;"></i>
+                </div>
+                <div class="stat-label">账户余额</div>
+                <div class="stat-value">
+                    <span id="balanceValue">--</span>
+                    <span class="stat-unit">CNY</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i data-lucide="activity" style="width:20px;height:20px;"></i>
+                </div>
+                <div class="stat-label">本月调用</div>
+                <div class="stat-value">
+                    <span id="callsValue">--</span>
+                    <span class="stat-unit">次调用</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i data-lucide="trending-up" style="width:20px;height:20px;"></i>
+                </div>
+                <div class="stat-label">本月消费</div>
+                <div class="stat-value">
+                    <span id="costValue">--</span>
+                    <span class="stat-unit">元</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bar Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <div class="chart-title">近 7 日用量</div>
+            </div>
+            <div class="bar-chart" id="barChart">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+
+        <!-- Usage Table -->
+        <div class="table-card">
+            <div class="table-card-header">
+                <div class="table-card-title">调用记录</div>
+                <div class="period-selector" id="usagePeriodSelector">
+                    <button class="period-btn active" data-period="7d" onclick="changeUsagePeriod('7d', this)">7 天</button>
+                    <button class="period-btn" data-period="30d" onclick="changeUsagePeriod('30d', this)">30 天</button>
+                    <button class="period-btn" data-period="all" onclick="changeUsagePeriod('all', this)">全部</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>API 类型</th>
+                            <th>模型</th>
+                            <th>输入 Token</th>
+                            <th>输出 Token</th>
+                            <th>费用</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usageTableBody">
+                        <tr><td colspan="6" class="loading-cell">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="usagePagination"></div>
+        </div>
+
+        <!-- Orders Table -->
+        <div class="table-card">
+            <div class="table-card-header">
+                <div class="table-card-title">充值记录</div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>订单号</th>
+                            <th>金额</th>
+                            <th>状态</th>
+                            <th>日期</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ordersTableBody">
+                        <tr><td colspan="5" class="loading-cell">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="ordersPagination"></div>
+        </div>
+    </div>
+
+    <!-- Topup Modal -->
+    <div class="modal-overlay" id="topupModal">
+        <div class="modal">
+            <div class="modal-title">账户充值</div>
+            <div class="amount-presets" id="amountPresets">
+                <button class="amount-btn" data-amount="10" onclick="selectAmount(10, this)">10</button>
+                <button class="amount-btn active" data-amount="30" onclick="selectAmount(30, this)">30</button>
+                <button class="amount-btn" data-amount="50" onclick="selectAmount(50, this)">50</button>
+                <button class="amount-btn" data-amount="100" onclick="selectAmount(100, this)">100</button>
+            </div>
+            <div class="amount-input-wrap">
+                <input type="number" class="amount-input" id="amountInput" placeholder="或输入自定义金额" min="1" oninput="onCustomAmount()">
+            </div>
+            <div class="payment-section-title">支付方式</div>
+            <div class="payment-methods">
+                <button class="payment-btn active" data-method="alipay" onclick="selectPayment('alipay', this)">
+                    支付宝
+                </button>
+                <button class="payment-btn" data-method="wechat" onclick="selectPayment('wechat', this)">
+                    微信支付
+                </button>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-cancel" onclick="closeTopupModal()">取消</button>
+                <button class="modal-confirm" id="topupConfirmBtn" onclick="submitTopup()">确认充值</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        var currentUser = null;
+        var usagePeriod = "7d";
+        var usagePage = 1;
+        var ordersPage = 1;
+        var PAGE_SIZE = 20;
+
+        var selectedAmount = 30;
+        var selectedPayment = "alipay";
+
+        // --- Init ---
+        document.addEventListener("DOMContentLoaded", function () {
+            StudioAuth.requireAuth()
+                .then(function (user) {
+                    currentUser = user;
+                    renderUserInfo(user);
+                    loadBalance();
+                    loadUsage();
+                    loadOrders();
+                })
+                .catch(function () {
+                    /* redirect handled by requireAuth */
+                });
+
+            if (typeof lucide !== "undefined") {
+                lucide.createIcons();
+            }
+        });
+
+        function renderUserInfo(user) {
+            var emailEl = document.getElementById("userEmail");
+            var roleEl = document.getElementById("userRole");
+            if (user.email) emailEl.textContent = user.email;
+            if (user.role) roleEl.textContent = user.role;
+        }
+
+        // --- Balance ---
+        function loadBalance() {
+            StudioAuth.fetchWithAuth("/api/user/balance")
+                .then(function (resp) { return resp.json(); })
+                .then(function (data) {
+                    var bal = data.balance != null ? data.balance : (data.data && data.data.balance);
+                    document.getElementById("balanceValue").textContent =
+                        bal != null ? Number(bal).toFixed(2) : "0.00";
+
+                    var calls = data.calls != null ? data.calls : (data.data && data.data.calls);
+                    document.getElementById("callsValue").textContent =
+                        calls != null ? calls : "--";
+
+                    var cost = data.cost != null ? data.cost : (data.data && data.data.cost);
+                    document.getElementById("costValue").textContent =
+                        cost != null ? Number(cost).toFixed(2) : "--";
+                })
+                .catch(function () {
+                    document.getElementById("balanceValue").textContent = "--";
+                    document.getElementById("callsValue").textContent = "--";
+                    document.getElementById("costValue").textContent = "--";
+                });
+        }
+
+        // --- Usage ---
+        function loadUsage() {
+            var url = "/api/user/usage?period=" + usagePeriod + "&page=" + usagePage + "&limit=" + PAGE_SIZE;
+            StudioAuth.fetchWithAuth(url)
+                .then(function (resp) { return resp.json(); })
+                .then(function (data) {
+                    var items = data.items || data.data || [];
+                    var total = data.total || 0;
+                    renderUsageTable(items);
+                    renderChart(items);
+                    renderUsagePagination(total);
+                })
+                .catch(function () {
+                    document.getElementById("usageTableBody").innerHTML =
+                        '<tr><td colspan="6" class="loading-cell">加载失败</td></tr>';
+                });
+        }
+
+        function renderUsageTable(items) {
+            var tbody = document.getElementById("usageTableBody");
+            if (!items || items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-row"><td class="empty-row" colspan="6">暂无调用记录</td></tr>';
+                return;
+            }
+            var html = "";
+            items.forEach(function (item) {
+                html += "<tr>"
+                    + "<td>" + escHtml(item.time || item.created_at || "-") + "</td>"
+                    + "<td>" + escHtml(item.api_type || item.apiType || "-") + "</td>"
+                    + "<td>" + escHtml(item.model || "-") + "</td>"
+                    + "<td>" + (item.input_tokens != null ? Number(item.input_tokens).toLocaleString() : (item.inputTokens != null ? Number(item.inputTokens).toLocaleString() : "-")) + "</td>"
+                    + "<td>" + (item.output_tokens != null ? Number(item.output_tokens).toLocaleString() : (item.outputTokens != null ? Number(item.outputTokens).toLocaleString() : "-")) + "</td>"
+                    + "<td>" + (item.cost != null ? Number(item.cost).toFixed(4) : "-") + "</td>"
+                    + "</tr>";
+            });
+            tbody.innerHTML = html;
+        }
+
+        function renderUsagePagination(total) {
+            var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            var container = document.getElementById("usagePagination");
+            if (pages <= 1) {
+                container.innerHTML = "";
+                return;
+            }
+            var html = '<button class="page-btn" onclick="goUsagePage(' + (usagePage - 1) + ')"' + (usagePage <= 1 ? " disabled" : "") + '>&lt;</button>';
+            for (var i = 1; i <= pages; i++) {
+                html += '<button class="page-btn' + (i === usagePage ? " active" : "") + '" onclick="goUsagePage(' + i + ')">' + i + "</button>";
+            }
+            html += '<span class="page-info">共 ' + total + ' 条</span>';
+            html += '<button class="page-btn" onclick="goUsagePage(' + (usagePage + 1) + ')"' + (usagePage >= pages ? " disabled" : "") + '>&gt;</button>';
+            container.innerHTML = html;
+        }
+
+        // Expose to onclick
+        window.goUsagePage = function (p) {
+            if (p < 1) return;
+            usagePage = p;
+            loadUsage();
+        };
+
+        window.changeUsagePeriod = function (period, btn) {
+            usagePeriod = period;
+            usagePage = 1;
+            var btns = document.querySelectorAll("#usagePeriodSelector .period-btn");
+            btns.forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            loadUsage();
+        };
+
+        // --- Bar Chart ---
+        function renderChart(items) {
+            var container = document.getElementById("barChart");
+            var days = ["一", "二", "三", "四", "五", "六", "日"];
+
+            // Aggregate usage by day of week from the data
+            var dayCounts = [0, 0, 0, 0, 0, 0, 0];
+            var dayMap = {};
+            if (items && items.length > 0) {
+                items.forEach(function (item) {
+                    var t = item.time || item.created_at || "";
+                    var d = new Date(t);
+                    if (!isNaN(d.getTime())) {
+                        var dow = d.getDay(); // 0=Sun
+                        var idx = dow === 0 ? 6 : dow - 1; // Mon=0
+                        dayCounts[idx]++;
+                        var key = t.substring(0, 10);
+                        dayMap[key] = (dayMap[key] || 0) + 1;
+                    }
+                });
+            }
+
+            // If no real data, show placeholder heights
+            var hasData = items && items.length > 0;
+            var placeholderHeights = [45, 65, 55, 80, 70, 90, 40];
+            var maxVal = 1;
+
+            if (hasData) {
+                maxVal = Math.max.apply(null, dayCounts);
+                if (maxVal === 0) maxVal = 1;
+            }
+
+            var html = "";
+            for (var i = 0; i < 7; i++) {
+                var count = hasData ? dayCounts[i] : 0;
+                var pct = hasData
+                    ? Math.max(6, (count / maxVal) * 100)
+                    : placeholderHeights[i];
+                html += '<div class="bar-col">'
+                    + (hasData ? '<div class="bar-value">' + count + '</div>' : "")
+                    + '<div class="bar" style="height:' + pct + '%;"></div>'
+                    + '<div class="bar-label">周' + days[i] + '</div>'
+                    + "</div>";
+            }
+            container.innerHTML = html;
+        }
+
+        // --- Orders ---
+        function loadOrders() {
+            var url = "/api/user/orders?page=" + ordersPage + "&limit=" + PAGE_SIZE;
+            StudioAuth.fetchWithAuth(url)
+                .then(function (resp) { return resp.json(); })
+                .then(function (data) {
+                    var items = data.items || data.data || [];
+                    var total = data.total || 0;
+                    renderOrdersTable(items);
+                    renderOrdersPagination(total);
+                })
+                .catch(function () {
+                    document.getElementById("ordersTableBody").innerHTML =
+                        '<tr><td colspan="5" class="loading-cell">加载失败</td></tr>';
+                });
+        }
+
+        function renderOrdersTable(items) {
+            var tbody = document.getElementById("ordersTableBody");
+            if (!items || items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">暂无充值记录</td></tr>';
+                return;
+            }
+            var statusMap = {
+                completed: "已完成",
+                pending: "处理中",
+                refunded: "已退款"
+            };
+            var html = "";
+            items.forEach(function (item) {
+                var s = item.status || "pending";
+                var label = statusMap[s] || s;
+                html += "<tr>"
+                    + "<td>" + escHtml(item.order_no || item.orderNo || "-") + "</td>"
+                    + "<td>" + (item.amount != null ? Number(item.amount).toFixed(2) + " 元" : "-") + "</td>"
+                    + '<td><span class="status-badge ' + s + '">' + label + "</span></td>"
+                    + "<td>" + escHtml(item.date || item.created_at || "-") + "</td>"
+                    + "<td>" + escHtml(item.note || item.description || "-") + "</td>"
+                    + "</tr>";
+            });
+            tbody.innerHTML = html;
+        }
+
+        function renderOrdersPagination(total) {
+            var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            var container = document.getElementById("ordersPagination");
+            if (pages <= 1) {
+                container.innerHTML = "";
+                return;
+            }
+            var html = '<button class="page-btn" onclick="goOrdersPage(' + (ordersPage - 1) + ')"' + (ordersPage <= 1 ? " disabled" : "") + '>&lt;</button>';
+            for (var i = 1; i <= pages; i++) {
+                html += '<button class="page-btn' + (i === ordersPage ? " active" : "") + '" onclick="goOrdersPage(' + i + ')">' + i + "</button>";
+            }
+            html += '<span class="page-info">共 ' + total + ' 条</span>';
+            html += '<button class="page-btn" onclick="goOrdersPage(' + (ordersPage + 1) + ')"' + (ordersPage >= pages ? " disabled" : "") + '>&gt;</button>';
+            container.innerHTML = html;
+        }
+
+        window.goOrdersPage = function (p) {
+            if (p < 1) return;
+            ordersPage = p;
+            loadOrders();
+        };
+
+        // --- Topup Modal ---
+        window.openTopupModal = function () {
+            selectedAmount = 30;
+            selectedPayment = "alipay";
+            document.getElementById("amountInput").value = "";
+            var presetBtns = document.querySelectorAll("#amountPresets .amount-btn");
+            presetBtns.forEach(function (b) {
+                b.classList.toggle("active", Number(b.dataset.amount) === 30);
+            });
+            var payBtns = document.querySelectorAll(".payment-btn");
+            payBtns.forEach(function (b) {
+                b.classList.toggle("active", b.dataset.method === "alipay");
+            });
+            document.getElementById("topupModal").classList.add("open");
+        };
+
+        window.closeTopupModal = function () {
+            document.getElementById("topupModal").classList.remove("open");
+        };
+
+        window.selectAmount = function (amount, btn) {
+            selectedAmount = amount;
+            document.getElementById("amountInput").value = "";
+            var btns = document.querySelectorAll("#amountPresets .amount-btn");
+            btns.forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+        };
+
+        window.onCustomAmount = function () {
+            var val = Number(document.getElementById("amountInput").value);
+            if (val > 0) {
+                selectedAmount = val;
+                var btns = document.querySelectorAll("#amountPresets .amount-btn");
+                btns.forEach(function (b) { b.classList.remove("active"); });
+            }
+        };
+
+        window.selectPayment = function (method, btn) {
+            selectedPayment = method;
+            var btns = document.querySelectorAll(".payment-btn");
+            btns.forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+        };
+
+        window.submitTopup = function () {
+            var amount = selectedAmount;
+            if (!amount || amount <= 0) {
+                showToast("请输入有效金额", "error");
+                return;
+            }
+            var btn = document.getElementById("topupConfirmBtn");
+            btn.disabled = true;
+            btn.textContent = "提交中...";
+
+            StudioAuth.fetchWithAuth("/api/user/topup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ amount: amount, payment_method: selectedPayment })
+            })
+                .then(function (resp) { return resp.json(); })
+                .then(function (data) {
+                    btn.disabled = false;
+                    btn.textContent = "确认充值";
+                    if (data.redirect_url || data.redirectUrl) {
+                        window.open(data.redirect_url || data.redirectUrl, "_blank");
+                    }
+                    showToast("充值请求已提交", "success");
+                    closeTopupModal();
+                    // Refresh balance after a short delay
+                    setTimeout(loadBalance, 2000);
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.textContent = "确认充值";
+                    showToast("充值请求失败", "error");
+                });
+        };
+
+        // Close modal on overlay click
+        document.getElementById("topupModal").addEventListener("click", function (e) {
+            if (e.target === this) closeTopupModal();
+        });
+
+        // --- Toast ---
+        var toastTimer = null;
+        function showToast(msg, type) {
+            var el = document.getElementById("toast");
+            el.textContent = msg;
+            el.className = "toast " + (type || "") + " show";
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () {
+                el.classList.remove("show");
+            }, 3000);
+        }
+
+        // --- Util ---
+        function escHtml(s) {
+            if (!s) return "";
+            var d = document.createElement("div");
+            d.textContent = s;
+            return d.innerHTML;
+        }
+    })();
+    </script>
+</body>
+</html>

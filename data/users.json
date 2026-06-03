@@ -1,0 +1,24 @@
+{
+  "user_da7e8f55c72e": {
+    "id": "user_da7e8f55c72e",
+    "username": "charlie",
+    "email": "zhouchunli@meross.com",
+    "password_hash": "11a21452ea723dceeb6a1ec39d46d6de:66c5d82d495602fb9c102d057888a5d7e382334479b94cd17016ea68299074ad",
+    "role": "admin",
+    "balance": 100.0,
+    "status": "active",
+    "created_at": 1780490233397,
+    "last_login": 1780490233453
+  },
+  "user_b9e06a13c849": {
+    "id": "user_b9e06a13c849",
+    "username": "test",
+    "email": "test@test.com",
+    "password_hash": "0c3183cc459b29a961144426d7ba5798:8fa1bb3b27819f0298d038dd998d242b106372ddf8216fbfb9bd8d7d842665fb",
+    "role": "user",
+    "balance": 0.0,
+    "status": "active",
+    "created_at": 1780490241040,
+    "last_login": 1780490278158
+  }
+}
